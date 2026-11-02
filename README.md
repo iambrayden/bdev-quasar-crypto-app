@@ -83,7 +83,7 @@ When a coin pumps or dumps, every player gets a notification (`Config.Simulation
 
 **Live prices** come from Coinbase by default: free, no API key and no monthly limit. CoinGecko is still supported (`Config.PriceSource = 'coingecko'`), but its free key allows only 10,000 calls a month, so raise `Config.LivePrices.RefreshSeconds` to 300 or more if you use it.
 
-**Included coins:** BTC, ETH, SOL; meme coins DOGE, SHIB, PEPE, WIF, BONK, FLOKI (live); and server coins LSC, MAZE, LSUSD, plus server meme coins CHOP, RAGE, CLUCK, YOLO, GRAPE and RON.
+**Included coins:** BTC, ETH, SOL and meme coins DOGE, SHIB, PEPE, WIF (live prices); server coins LSC and LSUSD; and the server meme coin RON (RonCoin). Each has a logo in `html/coins/`.
 
 #### Creating coins in-game
 

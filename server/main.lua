@@ -68,6 +68,7 @@ local function buildWallet(src, citizenid)
                 symbol = coin.symbol,
                 name = coin.name,
                 color = coin.color,
+                icon = coin.icon,
                 amount = h.amount,
                 invested = h.invested,
                 value = value,

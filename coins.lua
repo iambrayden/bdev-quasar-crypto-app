@@ -16,8 +16,10 @@
     Optional fields:
         preset     = 'stable' | 'normal' | 'volatile' | 'meme'  (server coins, default 'normal')
         color      = '#ff00aa'          icon background (auto-picked if omitted)
-        icon       = 'coins/mycoin.png' logo image: put the file in html/coins/ (png/jpg/webp), or use a
-                                        full https:// URL. Falls back to the coloured circle if missing.
+        icon       = 'coins/mycoin.png' logo image. By default a coin uses html/coins/<symbol>.png
+                                        (e.g. html/coins/btc.png), so usually you just drop a square PNG
+                                        there. Set icon only for another name, a .jpg/.webp, or an
+                                        https:// URL. Missing images fall back to the coloured circle.
         tag        = 'MEME'             badge shown in the market (meme preset sets this for you)
         multiplier = 0.01               real coins: scale the real price for your economy
         Any preset value (volatility, drift, reversion, floor, events) can be overridden per coin.
@@ -62,20 +64,12 @@ Config.Coins = {
     { symbol = 'SHIB',  name = 'Shiba Inu',  live = true, geckoId = 'shiba-inu',  color = '#ffa409', tag = 'MEME' },
     { symbol = 'PEPE',  name = 'Pepe',       live = true, geckoId = 'pepe',       color = '#3d9b3b', tag = 'MEME' },
     { symbol = 'WIF',   name = 'dogwifhat',  live = true, geckoId = 'dogwifcoin', color = '#b8875a', tag = 'MEME' },
-    { symbol = 'BONK',  name = 'Bonk',       live = true, geckoId = 'bonk',       color = '#f8a103', tag = 'MEME' },
-    { symbol = 'FLOKI', name = 'Floki',      live = true, geckoId = 'floki',      color = '#e2a43b', tag = 'MEME' },
 
     -- Server coins
     { symbol = 'LSC',   name = 'LosSantosCoin', startPrice = 125.0, preset = 'normal',   color = '#e84393' },
-    { symbol = 'MAZE',  name = 'MazeToken',     startPrice = 4.20,  preset = 'volatile', color = '#00b894' },
     { symbol = 'LSUSD', name = 'LS Dollar',     startPrice = 1.00,  preset = 'stable',   color = '#2ecc71' },
 
     -- Server meme coins (expect wild pumps and rug-pull dumps)
-    { symbol = 'CHOP',  name = 'ChopCoin',          startPrice = 0.0042,   preset = 'meme', color = '#a0522d' },
-    { symbol = 'RAGE',  name = 'Impotent Rage',     startPrice = 0.069,    preset = 'meme', color = '#c0392b' },
-    { symbol = 'CLUCK', name = 'CluckCoin',         startPrice = 0.0123,   preset = 'meme', color = '#f1c40f' },
-    { symbol = 'YOLO',  name = 'YOLO Inu',          startPrice = 0.000777, preset = 'meme', color = '#9b59b6' },
-    { symbol = 'GRAPE', name = 'Grapeseed Moon',    startPrice = 0.0315,   preset = 'meme', color = '#8e44ad' },
     { symbol = 'RON',   name = 'RonCoin',           startPrice = 0.042,    preset = 'meme', color = '#7ac143',
       icon = 'coins/roncoin.png' },
 }

@@ -95,7 +95,8 @@ function Prices.Normalize(raw)
         symbol = symbol,
         name = name,
         color = (type(raw.color) == 'string' and raw.color:match('^#%x%x%x%x%x%x$')) and raw.color or autoColor(symbol),
-        icon = type(raw.icon) == 'string' and raw.icon ~= '' and raw.icon or nil,
+        -- Logo: explicit icon, else html/coins/<symbol>.png (the app falls back to a coloured circle if it's missing)
+        icon = type(raw.icon) == 'string' and raw.icon ~= '' and raw.icon or ('coins/' .. symbol:lower() .. '.png'),
         tag = type(raw.tag) == 'string' and raw.tag ~= '' and raw.tag:upper():sub(1, 8) or nil,
         custom = raw.custom == true,
     }

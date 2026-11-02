@@ -558,16 +558,16 @@
         holdings: { BTC: { amount: 0.0215, invested: 1800 }, LSC: { amount: 42.5, invested: 4900 } },
         txs: [],
         coins: [
-            { symbol: 'BTC', name: 'Bitcoin', color: '#f7931a', type: 'real', price: 96250.12, change: 2.31 },
-            { symbol: 'ETH', name: 'Ethereum', color: '#627eea', type: 'real', price: 3412.55, change: -1.12 },
-            { symbol: 'SOL', name: 'Solana', color: '#14f195', type: 'real', price: 182.4, change: 4.87 },
-            { symbol: 'DOGE', name: 'Dogecoin', color: '#c2a633', type: 'real', tag: 'MEME', price: 0.3821, change: -3.4 },
-            { symbol: 'SHIB', name: 'Shiba Inu', color: '#ffa409', type: 'real', tag: 'MEME', price: 0.00002187, change: 6.1 },
-            { symbol: 'PEPE', name: 'Pepe', color: '#3d9b3b', type: 'real', tag: 'MEME', price: 0.00001934, change: -7.25 },
-            { symbol: 'LSC', name: 'LosSantosCoin', color: '#e84393', type: 'simulated', price: 131.77, change: 5.42 },
-            { symbol: 'MAZE', name: 'MazeToken', color: '#00b894', type: 'simulated', price: 4.0312, change: -0.85 },
-            { symbol: 'CHOP', name: 'ChopCoin', color: '#a0522d', type: 'simulated', tag: 'MEME', price: 0.006113, change: 45.5 },
-            { symbol: 'RON', name: 'RonCoin', color: '#7ac143', type: 'simulated', tag: 'MEME', icon: 'coins/roncoin.png', price: 0.04871, change: 15.97 },
+            { symbol: 'BTC', name: 'Bitcoin', color: '#f7931a', icon: 'coins/btc.png', type: 'real', price: 78470.17, change: 1.14 },
+            { symbol: 'ETH', name: 'Ethereum', color: '#627eea', icon: 'coins/eth.png', type: 'real', price: 2292.86, change: 1.15 },
+            { symbol: 'SOL', name: 'Solana', color: '#14f195', icon: 'coins/sol.png', type: 'real', price: 95.06, change: -0.48 },
+            { symbol: 'DOGE', name: 'Dogecoin', color: '#c2a633', icon: 'coins/doge.png', type: 'real', tag: 'MEME', price: 0.07585, change: 0.34 },
+            { symbol: 'SHIB', name: 'Shiba Inu', color: '#ffa409', icon: 'coins/shib.png', type: 'real', tag: 'MEME', price: 0.00000471, change: 0.43 },
+            { symbol: 'PEPE', name: 'Pepe', color: '#3d9b3b', icon: 'coins/pepe.png', type: 'real', tag: 'MEME', price: 0.00000492, change: -2.38 },
+            { symbol: 'WIF', name: 'dogwifhat', color: '#b8875a', icon: 'coins/wif.png', type: 'real', tag: 'MEME', price: 0.17663, change: 0.19 },
+            { symbol: 'LSC', name: 'LosSantosCoin', color: '#e84393', icon: 'coins/lsc.png', type: 'simulated', price: 131.77, change: 5.42 },
+            { symbol: 'LSUSD', name: 'LS Dollar', color: '#2ecc71', icon: 'coins/lsusd.png', type: 'simulated', price: 1.0012, change: 0.12 },
+            { symbol: 'RON', name: 'RonCoin', color: '#7ac143', icon: 'coins/roncoin.png', type: 'simulated', tag: 'MEME', price: 0.04871, change: 15.97 },
         ],
         handle(name, d) {
             const coin = (s) => this.coins.find((c) => c.symbol === s);
@@ -577,7 +577,7 @@
                 case 'getData': {
                     const holdings = Object.entries(this.holdings).filter(([, h]) => h.amount > 0).map(([s, h]) => {
                         const c = coin(s);
-                        return { symbol: s, name: c.name, color: c.color, amount: h.amount, invested: h.invested, value: h.amount * c.price, price: c.price };
+                        return { symbol: s, name: c.name, color: c.color, icon: c.icon, amount: h.amount, invested: h.invested, value: h.amount * c.price, price: c.price };
                     });
                     return {
                         ok: true, market: this.coins,
