@@ -18,7 +18,7 @@ Admins can create new coins in-game, set/pump/crash server coins, and give coins
 - [ox_lib](https://github.com/overextended/ox_lib)
 - [oxmysql](https://github.com/overextended/oxmysql)
 - Quasar **Smartphone V3** (`qs-smartphone`) or **Smartphone PRO** (`qs-smartphone-pro`). The script detects which one you run.
-- For live prices, your FiveM server needs outbound HTTPS to `api.coingecko.com`.
+- For live prices, your FiveM server needs outbound HTTPS to `api.exchange.coinbase.com` (free, no API key).
 
 ## Install
 
@@ -51,7 +51,7 @@ Everything is in `config.lua`:
 | `Config.Phone`, `Config.App` | Which phone to register with, plus the app's name, icon label, store category and job lock |
 | `Config.Trading` | Trading fee %, min/max buy, minimum sell value, per-player cooldown |
 | `Config.Transfers` | Enable/disable sending, transfer fee %, sending by phone number |
-| `Config.CoinGecko` | Optional free demo API key, refresh rate, days of chart history to seed |
+| `Config.PriceSource`, `Config.LivePrices` | Live price source (`coinbase` default, or `coingecko`), refresh rate, days of chart history |
 | `Config.Simulation`, `Config.History` | Simulated tick rate, chart point interval and retention |
 | `Config.Coins` | The coin list (see below) |
 | `Config.PhoneLookup` | How a phone number is resolved to a citizenid |
@@ -64,11 +64,11 @@ Coins live in **`coins.lua`**, one line each. Only `symbol` and `name` are requi
 -- Server coin with a preset (stable / normal / volatile / meme)
 { symbol = 'RON', name = 'RonCoin', startPrice = 0.042, preset = 'meme', icon = 'coins/roncoin.png' },
 
--- Real coin: live CoinGecko price (geckoId = last part of the coin's coingecko.com URL)
-{ symbol = 'SHIB', name = 'Shiba Inu', geckoId = 'shiba-inu', tag = 'MEME' },
+-- Real coin: live price from the Coinbase market SHIB-USD
+{ symbol = 'SHIB', name = 'Shiba Inu', live = true, tag = 'MEME' },
 ```
 
-Optional fields: `color`, `icon` (a file in `html/coins/` or an https URL), `tag` (market badge), `multiplier` (scales real prices for your economy), and any preset value to override (`volatility`, `drift`, `reversion`, `floor`, `events`).
+Optional fields: `market` (Coinbase market if it isn't `SYMBOL-USD`), `geckoId` (only for `Config.PriceSource = 'coingecko'`), `color`, `icon` (a file in `html/coins/` or an https URL), `tag` (market badge), `multiplier` (scales real prices for your economy), and any preset value to override (`volatility`, `drift`, `reversion`, `floor`, `events`).
 
 **Presets** (defined in `coins.lua`, so you can edit them or add your own):
 
@@ -81,11 +81,13 @@ Optional fields: `color`, `icon` (a file in `html/coins/` or an https URL), `tag
 
 When a coin pumps or dumps, every player gets a notification (`Config.Simulation.AnnounceEvents`).
 
+**Live prices** come from Coinbase by default: free, no API key and no monthly limit. CoinGecko is still supported (`Config.PriceSource = 'coingecko'`), but its free key allows only 10,000 calls a month, so raise `Config.LivePrices.RefreshSeconds` to 300 or more if you use it.
+
 **Included coins:** BTC, ETH, SOL; meme coins DOGE, SHIB, PEPE, WIF, BONK, FLOKI (live); and server coins LSC, MAZE, LSUSD, plus server meme coins CHOP, RAGE, CLUCK, YOLO, GRAPE and RON.
 
 #### Creating coins in-game
 
-`/cryptocreate` opens a form (name, symbol, server/real, start price, preset, CoinGecko id, colour, logo). Or use it in one line:
+`/cryptocreate` opens a form (name, symbol, server/real, start price, preset, market, colour, logo). Real coins are checked against Coinbase before they're added. Or use it in one line:
 
 ```
 /cryptocreate RON 0.042 meme RonCoin

@@ -7,9 +7,11 @@
     Server coin (price simulated on your server):
         { symbol = 'MYC', name = 'MyCoin', startPrice = 2.50, preset = 'volatile' },
 
-    Real coin (live price from CoinGecko; geckoId is the last part of the coin's
-    coingecko.com URL, e.g. coingecko.com/en/coins/shiba-inu -> 'shiba-inu'):
-        { symbol = 'SHIB', name = 'Shiba Inu', geckoId = 'shiba-inu' },
+    Real coin (live price; uses the Coinbase market SYMBOL-USD by default):
+        { symbol = 'SHIB', name = 'Shiba Inu', live = true },
+    If the Coinbase market has a different name, add market = 'XYZ-USD'.
+    Using CoinGecko instead (Config.PriceSource = 'coingecko')? Add geckoId, the last part of
+    the coin's coingecko.com URL, e.g. geckoId = 'shiba-inu'.
 
     Optional fields:
         preset     = 'stable' | 'normal' | 'volatile' | 'meme'  (server coins, default 'normal')
@@ -51,17 +53,17 @@ Config.Presets = {
 
 Config.Coins = {
     -- Majors (live)
-    { symbol = 'BTC',   name = 'Bitcoin',    geckoId = 'bitcoin',    color = '#f7931a' },
-    { symbol = 'ETH',   name = 'Ethereum',   geckoId = 'ethereum',   color = '#627eea' },
-    { symbol = 'SOL',   name = 'Solana',     geckoId = 'solana',     color = '#14f195' },
+    { symbol = 'BTC',   name = 'Bitcoin',    live = true, geckoId = 'bitcoin',    color = '#f7931a' },
+    { symbol = 'ETH',   name = 'Ethereum',   live = true, geckoId = 'ethereum',   color = '#627eea' },
+    { symbol = 'SOL',   name = 'Solana',     live = true, geckoId = 'solana',     color = '#14f195' },
 
     -- Meme coins (live)
-    { symbol = 'DOGE',  name = 'Dogecoin',   geckoId = 'dogecoin',   color = '#c2a633', tag = 'MEME' },
-    { symbol = 'SHIB',  name = 'Shiba Inu',  geckoId = 'shiba-inu',  color = '#ffa409', tag = 'MEME' },
-    { symbol = 'PEPE',  name = 'Pepe',       geckoId = 'pepe',       color = '#3d9b3b', tag = 'MEME' },
-    { symbol = 'WIF',   name = 'dogwifhat',  geckoId = 'dogwifcoin', color = '#b8875a', tag = 'MEME' },
-    { symbol = 'BONK',  name = 'Bonk',       geckoId = 'bonk',       color = '#f8a103', tag = 'MEME' },
-    { symbol = 'FLOKI', name = 'Floki',      geckoId = 'floki',      color = '#e2a43b', tag = 'MEME' },
+    { symbol = 'DOGE',  name = 'Dogecoin',   live = true, geckoId = 'dogecoin',   color = '#c2a633', tag = 'MEME' },
+    { symbol = 'SHIB',  name = 'Shiba Inu',  live = true, geckoId = 'shiba-inu',  color = '#ffa409', tag = 'MEME' },
+    { symbol = 'PEPE',  name = 'Pepe',       live = true, geckoId = 'pepe',       color = '#3d9b3b', tag = 'MEME' },
+    { symbol = 'WIF',   name = 'dogwifhat',  live = true, geckoId = 'dogwifcoin', color = '#b8875a', tag = 'MEME' },
+    { symbol = 'BONK',  name = 'Bonk',       live = true, geckoId = 'bonk',       color = '#f8a103', tag = 'MEME' },
+    { symbol = 'FLOKI', name = 'Floki',      live = true, geckoId = 'floki',      color = '#e2a43b', tag = 'MEME' },
 
     -- Server coins
     { symbol = 'LSC',   name = 'LosSantosCoin', startPrice = 125.0, preset = 'normal',   color = '#e84393' },

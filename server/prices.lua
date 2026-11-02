@@ -1,11 +1,10 @@
--- Price engine: live CoinGecko prices for real coins, a random walk (with optional
+-- Price engine: live prices (Coinbase or CoinGecko) for real coins, a random walk (with optional
 -- pump/dump events) for simulated coins, and in-memory chart history for both.
 Prices = {}
 
 local coins = {}      -- symbol -> state
 local order = {}      -- symbols in display order
 
-local GECKO_BASE = 'https://api.coingecko.com/api/v3'
 
 local AUTO_COLORS = {
     '#e84393', '#00b894', '#0984e3', '#fdcb6e', '#6c5ce7', '#e17055',
@@ -101,10 +100,20 @@ function Prices.Normalize(raw)
         custom = raw.custom == true,
     }
 
-    if type(raw.geckoId) == 'string' and raw.geckoId ~= '' then
-        if not raw.geckoId:match('^[%w%-%.]+$') then return nil, 'Invalid CoinGecko id' end
+    local hasGecko = type(raw.geckoId) == 'string' and raw.geckoId ~= ''
+    local hasMarket = type(raw.market) == 'string' and raw.market ~= ''
+    if raw.live == true or hasGecko or hasMarket then
         c.type = 'real'
-        c.geckoId = raw.geckoId:lower()
+        -- Coinbase market, e.g. 'BTC-USD' (defaults to SYMBOL-USD)
+        c.market = hasMarket and raw.market:upper() or (symbol .. '-USD')
+        if not c.market:match('^[%w]+%-[%w]+$') then return nil, 'Invalid market (use e.g. BTC-USD)' end
+        if hasGecko then
+            if not raw.geckoId:match('^[%w%-%.]+$') then return nil, 'Invalid CoinGecko id' end
+            c.geckoId = raw.geckoId:lower()
+        end
+        if Prices.Source() == 'coingecko' and not c.geckoId then
+            return nil, 'needs a geckoId when Config.PriceSource is coingecko'
+        end
         c.multiplier = tonumber(raw.multiplier) or 1.0
         if c.multiplier <= 0 then return nil, 'Multiplier must be above 0' end
         return c
@@ -134,22 +143,128 @@ function Prices.Normalize(raw)
 end
 
 ---------------------------------------------------------------------
--- CoinGecko
+-- Live price sources
 ---------------------------------------------------------------------
-local function geckoGet(path, cb)
-    local headers = { ['Accept'] = 'application/json' }
-    if Config.CoinGecko.ApiKey ~= '' then
-        headers['x-cg-demo-api-key'] = Config.CoinGecko.ApiKey
-    end
-    PerformHttpRequest(GECKO_BASE .. path, function(status, body)
-        if status ~= 200 or not body then
-            print(('[bdev-crypto] CoinGecko request failed (%s): %s'):format(tostring(status), path))
-            return cb(nil)
-        end
-        local ok, data = pcall(json.decode, body)
-        cb(ok and data or nil)
-    end, 'GET', '', headers)
+-- Each source fetches prices for a list of coin states and a chart history for one coin.
+-- HTTP calls are synchronous (promise + Citizen.Await), so they must run inside a thread.
+
+local function httpJson(url, headers)
+    local p = promise.new()
+    PerformHttpRequest(url, function(status, body)
+        p:resolve({ status = status, body = body })
+    end, 'GET', '', headers or {})
+    local res = Citizen.Await(p)
+    if res.status ~= 200 or not res.body then return nil, res.status end
+    local ok, data = pcall(json.decode, res.body)
+    if not ok then return nil, 'bad json' end
+    return data
 end
+
+local Sources = {}
+
+-- Coinbase Exchange public API: free, no key, no monthly cap (about 10 requests/second).
+Sources.coinbase = {
+    base = 'https://api.exchange.coinbase.com',
+    headers = { ['Accept'] = 'application/json', ['User-Agent'] = 'bdev-quasar-crypto-app' },
+
+    --- Returns price, change24h for one coin, or nil and an error.
+    quote = function(self, state)
+        local data, err = httpJson(('%s/products/%s/stats'):format(self.base, state.cfg.market), self.headers)
+        local last = data and tonumber(data.last)
+        if not last then return nil, ('Coinbase has no %s market (%s)'):format(state.cfg.market, tostring(err)) end
+        local open = tonumber(data.open)
+        return last, (open and open > 0) and (last - open) / open * 100 or 0
+    end,
+
+    refresh = function(self, list)
+        for i, state in ipairs(list) do
+            local price, change = self:quote(state)
+            if price then
+                state.price = roundPrice(price * state.cfg.multiplier)
+                state.change24h = change
+                state.updated = now()
+            else
+                print('[bdev-crypto] ' .. tostring(change))
+            end
+            if i < #list then Wait(150) end -- stay well under the rate limit
+        end
+    end,
+
+    history = function(self, state, days)
+        local data = httpJson(('%s/products/%s/candles?granularity=3600'):format(self.base, state.cfg.market), self.headers)
+        if type(data) ~= 'table' then return nil end
+        local since = now() - days * 86400
+        local points = {}
+        -- candles are [time, low, high, open, close, volume], newest first
+        for i = #data, 1, -1 do
+            local c = data[i]
+            if type(c) == 'table' and tonumber(c[1]) and tonumber(c[1]) >= since and tonumber(c[5]) then
+                points[#points + 1] = { t = tonumber(c[1]), p = roundPrice(tonumber(c[5]) * state.cfg.multiplier) }
+            end
+        end
+        return points
+    end,
+
+    historyDelay = 300,
+}
+
+-- CoinGecko: the free Demo key allows 10,000 calls/month, so keep RefreshSeconds at 300 or more.
+Sources.coingecko = {
+    base = 'https://api.coingecko.com/api/v3',
+
+    headers = function()
+        local h = { ['Accept'] = 'application/json' }
+        if (Config.CoinGecko.ApiKey or '') ~= '' then h['x-cg-demo-api-key'] = Config.CoinGecko.ApiKey end
+        return h
+    end,
+
+    quote = function(self, state)
+        self:refresh({ state })
+        if state.price then return state.price, state.change24h end
+        return nil, ('CoinGecko has no price for "%s"'):format(tostring(state.cfg.geckoId))
+    end,
+
+    refresh = function(self, list)
+        local ids, seen = {}, {}
+        for _, state in ipairs(list) do
+            if not seen[state.cfg.geckoId] then
+                ids[#ids + 1] = state.cfg.geckoId
+                seen[state.cfg.geckoId] = true
+            end
+        end
+        local data, err = httpJson(('%s/simple/price?ids=%s&vs_currencies=usd&include_24hr_change=true&precision=full')
+            :format(self.base, table.concat(ids, ',')), self.headers())
+        if not data then return print(('[bdev-crypto] CoinGecko request failed (%s)'):format(tostring(err))) end
+        for _, state in ipairs(list) do
+            local entry = data[state.cfg.geckoId]
+            if entry and tonumber(entry.usd) then
+                state.price = roundPrice(entry.usd * state.cfg.multiplier)
+                state.change24h = tonumber(entry.usd_24h_change) or 0
+                state.updated = now()
+            end
+        end
+    end,
+
+    history = function(self, state, days)
+        local data = httpJson(('%s/coins/%s/market_chart?vs_currency=usd&days=%d')
+            :format(self.base, state.cfg.geckoId, days), self.headers())
+        if not data or type(data.prices) ~= 'table' then return nil end
+        local points = {}
+        for _, pair in ipairs(data.prices) do
+            points[#points + 1] = { t = math.floor(pair[1] / 1000), p = roundPrice(pair[2] * state.cfg.multiplier) }
+        end
+        return points
+    end,
+
+    historyDelay = 6000,
+}
+
+function Prices.Source()
+    local name = tostring(Config.PriceSource or 'coinbase'):lower()
+    return Sources[name] and name or 'coinbase'
+end
+
+local function source() return Sources[Prices.Source()] end
 
 local function realCoins(only)
     local list = {}
@@ -160,61 +275,28 @@ local function realCoins(only)
     return list
 end
 
-local function refreshRealPrices(only)
-    local list = realCoins(only)
-    if #list == 0 then return end
-
-    local ids, seen = {}, {}
-    for _, state in ipairs(list) do
-        if not seen[state.cfg.geckoId] then
-            ids[#ids + 1] = state.cfg.geckoId
-            seen[state.cfg.geckoId] = true
-        end
-    end
-
-    geckoGet(('/simple/price?ids=%s&vs_currencies=usd&include_24hr_change=true&precision=full')
-        :format(table.concat(ids, ',')), function(data)
-            if not data then return end
-            for _, state in ipairs(list) do
-                local entry = data[state.cfg.geckoId]
-                if entry and tonumber(entry.usd) then
-                    state.price = roundPrice(entry.usd * state.cfg.multiplier)
-                    state.change24h = tonumber(entry.usd_24h_change) or 0
-                    state.updated = now()
-                elseif coins[state.cfg.symbol] then
-                    debug('no CoinGecko price for ' .. state.cfg.geckoId)
-                end
-            end
-            debug('real prices refreshed')
-        end)
+local function refreshRealPrices()
+    local list = realCoins()
+    if #list > 0 then source():refresh(list) end
 end
 
 local function seedHistory(state)
-    geckoGet(('/coins/%s/market_chart?vs_currency=usd&days=%d'):format(
-        state.cfg.geckoId, Config.CoinGecko.SeedHistoryDays), function(data)
-        if not data or type(data.prices) ~= 'table' then return end
-        local seeded = {}
-        for _, pair in ipairs(data.prices) do
-            seeded[#seeded + 1] = {
-                t = math.floor(pair[1] / 1000),
-                p = roundPrice(pair[2] * state.cfg.multiplier),
-            }
-        end
-        -- Keep any live points recorded after the seed's last point.
-        local lastSeed = seeded[#seeded] and seeded[#seeded].t or 0
-        for _, point in ipairs(state.history) do
-            if point.t > lastSeed then seeded[#seeded + 1] = point end
-        end
-        state.history = seeded
-        if not state.price and seeded[#seeded] then state.price = seeded[#seeded].p end
-        debug(('seeded %d history points for %s'):format(#seeded, state.cfg.symbol))
-    end)
+    local seeded = source():history(state, Config.LivePrices.SeedHistoryDays)
+    if not seeded or #seeded == 0 then return end
+    -- Keep any live points recorded after the seed's last point.
+    local lastSeed = seeded[#seeded].t
+    for _, point in ipairs(state.history) do
+        if point.t > lastSeed then seeded[#seeded + 1] = point end
+    end
+    state.history = seeded
+    if not state.price then state.price = seeded[#seeded].p end
+    debug(('seeded %d history points for %s'):format(#seeded, state.cfg.symbol))
 end
 
 local function seedAllHistory()
     for _, state in ipairs(realCoins()) do
-        seedHistory(state)
-        Wait(Config.CoinGecko.SeedDelaySeconds * 1000) -- stay under the free API rate limit
+        if coins[state.cfg.symbol] then seedHistory(state) end
+        Wait(source().historyDelay)
     end
 end
 
@@ -292,10 +374,21 @@ function Prices.AddCoin(raw)
     if not c then return nil, err end
     c.custom = true
     if coins[c.symbol] then return nil, c.symbol .. ' already exists' end
-    local state = register(c)
+
+    -- Check the live market exists before adding the coin.
+    local probe
     if c.type == 'real' then
-        refreshRealPrices(c.symbol)
-        seedHistory(state)
+        probe = { cfg = c, history = {} }
+        local price, change = source():quote(probe)
+        if not price then return nil, change end
+        probe.price = roundPrice(price * c.multiplier)
+        probe.change24h = change
+    end
+
+    local state = register(c)
+    if probe then
+        state.price, state.change24h, state.updated = probe.price, probe.change24h, now()
+        CreateThread(function() seedHistory(state) end)
     end
     return c
 end
@@ -345,7 +438,7 @@ function Prices.Init(customCoins)
 
     CreateThread(function()
         while true do
-            Wait(Config.CoinGecko.RefreshSeconds * 1000)
+            Wait(math.max(30, Config.LivePrices.RefreshSeconds) * 1000)
             refreshRealPrices()
         end
     end)

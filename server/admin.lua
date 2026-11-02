@@ -109,7 +109,9 @@ local function createCoin(src, raw)
         icon = raw.icon,
         tag = raw.tag,
     }
-    if raw.geckoId and raw.geckoId ~= '' then
+    if raw.live or (raw.market and raw.market ~= '') or (raw.geckoId and raw.geckoId ~= '') then
+        def.live = true
+        def.market = raw.market
         def.geckoId = raw.geckoId
         def.multiplier = raw.multiplier
     else

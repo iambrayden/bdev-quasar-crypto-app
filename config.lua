@@ -46,12 +46,20 @@ Config.TransactionHistoryLimit = 50
 ---------------------------------------------------------------------
 -- Prices
 ---------------------------------------------------------------------
--- Real coins: prices come from CoinGecko (your FiveM server needs outbound access to api.coingecko.com).
-Config.CoinGecko = {
-    SeedDelaySeconds = 6,          -- delay between history requests on start (free API is rate limited)
-    ApiKey = '',                   -- optional free "demo" API key (raises rate limits)
-    RefreshSeconds = 90,           -- how often to refresh live prices
+-- Where real coins get their prices (your FiveM server needs outbound HTTPS to it):
+--   'coinbase'  (default) free, no API key, no monthly limit. Coins use their Coinbase market,
+--               SYMBOL-USD by default (set market = 'XYZ-USD' on a coin to change it).
+--   'coingecko' needs geckoId on every real coin. Its free Demo key allows 10,000 calls a
+--               month, so set RefreshSeconds to 300 or more.
+Config.PriceSource = 'coinbase'
+
+Config.LivePrices = {
+    RefreshSeconds = 60,           -- how often to refresh live prices
     SeedHistoryDays = 7,           -- pull this many days of real history on start for charts
+}
+
+Config.CoinGecko = {
+    ApiKey = '',                   -- free "demo" key from coingecko.com/en/api (only used with 'coingecko')
 }
 
 -- Simulated coins tick on the server.

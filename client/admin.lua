@@ -11,11 +11,11 @@ RegisterNetEvent('bdev-crypto:createCoinDialog', function(presets)
         { type = 'input', label = 'Symbol', placeholder = 'RON', required = true, min = 2, max = 8 },
         { type = 'select', label = 'Price source', required = true, default = 'simulated', options = {
             { value = 'simulated', label = 'Server coin (simulated price)' },
-            { value = 'real', label = 'Real coin (live CoinGecko price)' },
+            { value = 'real', label = 'Real coin (live market price)' },
         } },
         { type = 'number', label = 'Start price ($) - server coins', placeholder = '0.05', precision = 10, min = 0 },
         { type = 'select', label = 'Behaviour - server coins', default = 'meme', options = presetOptions },
-        { type = 'input', label = 'CoinGecko id - real coins', placeholder = 'shiba-inu' },
+        { type = 'input', label = 'Market - real coins (blank = SYMBOL-USD)', placeholder = 'SHIB-USD' },
         { type = 'color', label = 'Icon colour', default = '#6c5ce7' },
         { type = 'input', label = 'Logo (optional)', placeholder = 'coins/roncoin.png or https://...' },
     })
@@ -27,7 +27,8 @@ RegisterNetEvent('bdev-crypto:createCoinDialog', function(presets)
         symbol = input[2],
         startPrice = not real and input[4] or nil,
         preset = not real and input[5] or nil,
-        geckoId = real and input[6] or nil,
+        live = real or nil,
+        market = real and input[6] ~= '' and input[6] or nil,
         color = input[7],
         icon = input[8] ~= '' and input[8] or nil,
     })
