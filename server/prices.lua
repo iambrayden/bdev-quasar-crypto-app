@@ -1,11 +1,16 @@
--- Price engine: live CoinGecko prices for real coins, a random walk for simulated coins,
--- and in-memory chart history for both.
+-- Price engine: live CoinGecko prices for real coins, a random walk (with optional
+-- pump/dump events) for simulated coins, and in-memory chart history for both.
 Prices = {}
 
 local coins = {}      -- symbol -> state
-local order = {}      -- symbols in config order
+local order = {}      -- symbols in display order
 
 local GECKO_BASE = 'https://api.coingecko.com/api/v3'
+
+local AUTO_COLORS = {
+    '#e84393', '#00b894', '#0984e3', '#fdcb6e', '#6c5ce7', '#e17055',
+    '#00cec9', '#d63031', '#a29bfe', '#fab1a0', '#55efc4', '#ff7675',
+}
 
 local function debug(...)
     if Config.Debug then print('[bdev-crypto]', ...) end
@@ -13,10 +18,15 @@ end
 
 local function now() return os.time() end
 
-local function round(n, decimals)
-    local m = 10 ^ (decimals or 8)
-    return math.floor(n * m + 0.5) / m
+--- Rounds to 10 significant digits so tiny meme-coin prices (0.00000123) keep precision.
+local function roundPrice(p)
+    if not p or p <= 0 then return 0 end
+    local mag = math.floor(math.log(p, 10))
+    local decimals = math.max(0, math.min(14, 9 - mag))
+    local m = 10 ^ decimals
+    return math.floor(p * m + 0.5) / m
 end
+Prices.RoundPrice = roundPrice
 
 -- Standard normal sample (Box-Muller)
 local function gaussian()
@@ -48,21 +58,6 @@ local function pushPoint(state, ts, price)
     h[#h + 1] = { t = ts, p = price }
 end
 
---- Records a chart point for every coin with a price (called every Config.History.PointSeconds).
-local function recordPoints()
-    local ts = now()
-    for _, symbol in ipairs(order) do
-        local state = coins[symbol]
-        if state.price then
-            pushPoint(state, ts, state.price)
-            trimHistory(state)
-            if state.cfg.type == 'simulated' then
-                DB.SaveHistoryPoint(symbol, ts, state.price)
-            end
-        end
-    end
-end
-
 local function change24h(state)
     if state.cfg.type == 'real' and state.change24h then return state.change24h end
     local since = now() - 86400
@@ -75,6 +70,67 @@ local function change24h(state)
         end
     end
     return 0
+end
+
+---------------------------------------------------------------------
+-- Coin definitions
+---------------------------------------------------------------------
+local function autoColor(symbol)
+    local hash = 0
+    for i = 1, #symbol do hash = (hash * 31 + symbol:byte(i)) % 2147483647 end
+    return AUTO_COLORS[hash % #AUTO_COLORS + 1]
+end
+
+--- Validates a coin definition and fills in defaults / preset values.
+--- Returns the normalized coin, or nil and an error message.
+function Prices.Normalize(raw)
+    if type(raw) ~= 'table' then return nil, 'Invalid coin' end
+    local symbol = type(raw.symbol) == 'string' and raw.symbol:upper():gsub('%s', '') or ''
+    if not symbol:match('^[A-Z0-9]+$') or #symbol < 2 or #symbol > 8 then
+        return nil, 'Symbol must be 2-8 letters/numbers'
+    end
+    local name = type(raw.name) == 'string' and raw.name:gsub('^%s+', ''):gsub('%s+$', '') or ''
+    if #name < 2 or #name > 32 then return nil, 'Name must be 2-32 characters' end
+
+    local c = {
+        symbol = symbol,
+        name = name,
+        color = (type(raw.color) == 'string' and raw.color:match('^#%x%x%x%x%x%x$')) and raw.color or autoColor(symbol),
+        icon = type(raw.icon) == 'string' and raw.icon ~= '' and raw.icon or nil,
+        tag = type(raw.tag) == 'string' and raw.tag ~= '' and raw.tag:upper():sub(1, 8) or nil,
+        custom = raw.custom == true,
+    }
+
+    if type(raw.geckoId) == 'string' and raw.geckoId ~= '' then
+        if not raw.geckoId:match('^[%w%-%.]+$') then return nil, 'Invalid CoinGecko id' end
+        c.type = 'real'
+        c.geckoId = raw.geckoId:lower()
+        c.multiplier = tonumber(raw.multiplier) or 1.0
+        if c.multiplier <= 0 then return nil, 'Multiplier must be above 0' end
+        return c
+    end
+
+    c.type = 'simulated'
+    c.startPrice = tonumber(raw.startPrice)
+    if not c.startPrice or c.startPrice <= 0 then return nil, 'Start price must be above 0' end
+
+    c.preset = raw.preset or 'normal'
+    local preset = Config.Presets[c.preset]
+    if not preset then return nil, ('Unknown preset "%s"'):format(tostring(c.preset)) end
+
+    local function pick(key, default)
+        if raw[key] ~= nil then return raw[key] end
+        if preset[key] ~= nil then return preset[key] end
+        return default
+    end
+    c.volatility = tonumber(pick('volatility', 0.01)) or 0.01
+    c.drift = tonumber(pick('drift', 0)) or 0
+    c.reversion = tonumber(pick('reversion', 0)) or 0
+    c.floor = tonumber(pick('floor', 0.01)) or 0.01
+    c.minPrice = roundPrice(c.startPrice * c.floor)
+    c.events = pick('events', nil)
+    c.tag = c.tag or (preset.tag and preset.tag:upper() or nil)
+    return c
 end
 
 ---------------------------------------------------------------------
@@ -95,102 +151,186 @@ local function geckoGet(path, cb)
     end, 'GET', '', headers)
 end
 
-local function realCoins()
+local function realCoins(only)
     local list = {}
     for _, symbol in ipairs(order) do
-        if coins[symbol].cfg.type == 'real' then list[#list + 1] = coins[symbol] end
+        local state = coins[symbol]
+        if state.cfg.type == 'real' and (not only or only == symbol) then list[#list + 1] = state end
     end
     return list
 end
 
-local function refreshRealPrices()
-    local list = realCoins()
+local function refreshRealPrices(only)
+    local list = realCoins(only)
     if #list == 0 then return end
 
-    local ids = {}
-    for i, state in ipairs(list) do ids[i] = state.cfg.geckoId end
+    local ids, seen = {}, {}
+    for _, state in ipairs(list) do
+        if not seen[state.cfg.geckoId] then
+            ids[#ids + 1] = state.cfg.geckoId
+            seen[state.cfg.geckoId] = true
+        end
+    end
 
-    geckoGet(('/simple/price?ids=%s&vs_currencies=usd&include_24hr_change=true'):format(table.concat(ids, ',')),
-        function(data)
+    geckoGet(('/simple/price?ids=%s&vs_currencies=usd&include_24hr_change=true&precision=full')
+        :format(table.concat(ids, ',')), function(data)
             if not data then return end
             for _, state in ipairs(list) do
                 local entry = data[state.cfg.geckoId]
                 if entry and tonumber(entry.usd) then
-                    state.price = round(entry.usd * (state.cfg.multiplier or 1.0), 8)
+                    state.price = roundPrice(entry.usd * state.cfg.multiplier)
                     state.change24h = tonumber(entry.usd_24h_change) or 0
                     state.updated = now()
+                elseif coins[state.cfg.symbol] then
+                    debug('no CoinGecko price for ' .. state.cfg.geckoId)
                 end
             end
             debug('real prices refreshed')
         end)
 end
 
-local function seedRealHistory()
+local function seedHistory(state)
+    geckoGet(('/coins/%s/market_chart?vs_currency=usd&days=%d'):format(
+        state.cfg.geckoId, Config.CoinGecko.SeedHistoryDays), function(data)
+        if not data or type(data.prices) ~= 'table' then return end
+        local seeded = {}
+        for _, pair in ipairs(data.prices) do
+            seeded[#seeded + 1] = {
+                t = math.floor(pair[1] / 1000),
+                p = roundPrice(pair[2] * state.cfg.multiplier),
+            }
+        end
+        -- Keep any live points recorded after the seed's last point.
+        local lastSeed = seeded[#seeded] and seeded[#seeded].t or 0
+        for _, point in ipairs(state.history) do
+            if point.t > lastSeed then seeded[#seeded + 1] = point end
+        end
+        state.history = seeded
+        if not state.price and seeded[#seeded] then state.price = seeded[#seeded].p end
+        debug(('seeded %d history points for %s'):format(#seeded, state.cfg.symbol))
+    end)
+end
+
+local function seedAllHistory()
     for _, state in ipairs(realCoins()) do
-        geckoGet(('/coins/%s/market_chart?vs_currency=usd&days=%d'):format(
-            state.cfg.geckoId, Config.CoinGecko.SeedHistoryDays), function(data)
-            if not data or type(data.prices) ~= 'table' then return end
-            local seeded = {}
-            for _, pair in ipairs(data.prices) do
-                seeded[#seeded + 1] = {
-                    t = math.floor(pair[1] / 1000),
-                    p = round(pair[2] * (state.cfg.multiplier or 1.0), 8),
-                }
-            end
-            -- Keep any live points recorded after the seed's last point.
-            local lastSeed = seeded[#seeded] and seeded[#seeded].t or 0
-            for _, point in ipairs(state.history) do
-                if point.t > lastSeed then seeded[#seeded + 1] = point end
-            end
-            state.history = seeded
-            if not state.price and seeded[#seeded] then state.price = seeded[#seeded].p end
-            debug(('seeded %d history points for %s'):format(#seeded, state.cfg.symbol))
-        end)
-        Wait(2500) -- stay well under the free API rate limit
+        seedHistory(state)
+        Wait(Config.CoinGecko.SeedDelaySeconds * 1000) -- stay under the free API rate limit
     end
 end
 
 ---------------------------------------------------------------------
 -- Simulation
 ---------------------------------------------------------------------
+local function announce(state, pumped, percent)
+    if not Config.Simulation.AnnounceEvents then return end
+    local c = state.cfg
+    TriggerClientEvent('ox_lib:notify', -1, {
+        title = Config.App.label,
+        description = pumped
+            and ('%s (%s) is mooning! +%d%%'):format(c.name, c.symbol, math.floor(percent))
+            or ('%s (%s) just crashed! -%d%%'):format(c.name, c.symbol, math.floor(percent)),
+        type = pumped and 'success' or 'error',
+        duration = 7000,
+    })
+end
+
 local function tickSimulated()
     for _, symbol in ipairs(order) do
         local state = coins[symbol]
         local c = state.cfg
         if c.type == 'simulated' and state.price then
-            local logChange = (c.drift or 0) + (c.volatility or 0.01) * gaussian()
-            if (c.reversion or 0) > 0 then
+            local logChange = c.drift + c.volatility * gaussian()
+            if c.reversion > 0 then
                 logChange = logChange + c.reversion * (math.log(c.startPrice) - math.log(state.price))
             end
-            state.price = round(math.max(c.minPrice or 0.0001, state.price * math.exp(logChange)), 8)
+            local price = state.price * math.exp(logChange)
+
+            local ev = c.events
+            if type(ev) == 'table' and math.random() < (ev.chance or 0) then
+                local pumped = math.random() < 0.5
+                local range = pumped and ev.pump or ev.dump
+                if type(range) == 'table' then
+                    local percent = range[1] + math.random() * (range[2] - range[1])
+                    price = price * (pumped and (1 + percent / 100) or math.max(0.01, 1 - percent / 100))
+                    announce(state, pumped, percent)
+                    debug(('%s event: %s %.1f%%'):format(symbol, pumped and 'pump' or 'dump', percent))
+                end
+            end
+
+            state.price = roundPrice(math.max(c.minPrice, price))
             state.updated = now()
         end
     end
 end
 
 ---------------------------------------------------------------------
--- Public API
+-- Coin registry
 ---------------------------------------------------------------------
-function Prices.Init()
-    for _, c in ipairs(Config.Coins) do
-        local symbol = c.symbol:upper()
-        c.symbol = symbol
-        coins[symbol] = { cfg = c, price = nil, history = {}, updated = 0 }
-        order[#order + 1] = symbol
+local function register(c)
+    local state = { cfg = c, price = nil, history = {}, updated = 0 }
+    coins[c.symbol] = state
+    order[#order + 1] = c.symbol
 
-        if c.type == 'simulated' then
-            local rows = DB.LoadHistory(symbol, now() - keepSeconds())
-            for _, row in ipairs(rows) do
-                pushPoint(coins[symbol], tonumber(row.ts), tonumber(row.price))
-            end
-            local last = coins[symbol].history[#coins[symbol].history]
-            coins[symbol].price = last and last.p or c.startPrice
+    if c.type == 'simulated' then
+        local rows = DB.LoadHistory(c.symbol, now() - keepSeconds())
+        for _, row in ipairs(rows) do
+            pushPoint(state, tonumber(row.ts), tonumber(row.price))
+        end
+        local last = state.history[#state.history]
+        state.price = last and last.p or c.startPrice
+        if not last then
+            pushPoint(state, now(), state.price)
+            DB.SaveHistoryPoint(c.symbol, now(), state.price)
         end
     end
+    return state
+end
+
+--- Adds a coin at runtime (used by /cryptocreate). raw is a coin definition like in coins.lua.
+function Prices.AddCoin(raw)
+    local c, err = Prices.Normalize(raw)
+    if not c then return nil, err end
+    c.custom = true
+    if coins[c.symbol] then return nil, c.symbol .. ' already exists' end
+    local state = register(c)
+    if c.type == 'real' then
+        refreshRealPrices(c.symbol)
+        seedHistory(state)
+    end
+    return c
+end
+
+function Prices.RemoveCoin(symbol)
+    if not coins[symbol] then return false end
+    coins[symbol] = nil
+    for i, s in ipairs(order) do
+        if s == symbol then table.remove(order, i) break end
+    end
+    return true
+end
+
+---------------------------------------------------------------------
+-- Startup
+---------------------------------------------------------------------
+--- customCoins: coin definitions created in-game (stored in the database).
+function Prices.Init(customCoins)
+    local function load(raw, origin)
+        local c, err = Prices.Normalize(raw)
+        if not c then
+            return print(('[bdev-crypto] skipped %s coin %s: %s'):format(origin, tostring(raw.symbol), err))
+        end
+        if coins[c.symbol] then
+            return print(('[bdev-crypto] skipped duplicate %s coin %s'):format(origin, c.symbol))
+        end
+        register(c)
+    end
+
+    for _, raw in ipairs(Config.Coins) do load(raw, 'config') end
+    for _, raw in ipairs(customCoins or {}) do raw.custom = true; load(raw, 'custom') end
 
     CreateThread(function()
         refreshRealPrices()
-        seedRealHistory()
+        seedAllHistory()
     end)
 
     CreateThread(function()
@@ -210,16 +350,29 @@ function Prices.Init()
     CreateThread(function()
         local lastPrune = 0
         while true do
-            recordPoints()
-            if now() - lastPrune > 3600 then
-                DB.PruneHistory(now() - keepSeconds())
-                lastPrune = now()
-            end
             Wait(Config.History.PointSeconds * 1000)
+            local ts = now()
+            for _, symbol in ipairs(order) do
+                local state = coins[symbol]
+                if state.price then
+                    pushPoint(state, ts, state.price)
+                    trimHistory(state)
+                    if state.cfg.type == 'simulated' then DB.SaveHistoryPoint(symbol, ts, state.price) end
+                end
+            end
+            if ts - lastPrune > 3600 then
+                DB.PruneHistory(ts - keepSeconds())
+                lastPrune = ts
+            end
         end
     end)
+
+    return #order
 end
 
+---------------------------------------------------------------------
+-- Queries
+---------------------------------------------------------------------
 function Prices.Exists(symbol)
     return coins[symbol] ~= nil
 end
@@ -239,11 +392,14 @@ function Prices.GetMarket()
     local list = {}
     for _, symbol in ipairs(order) do
         local state = coins[symbol]
+        local c = state.cfg
         list[#list + 1] = {
             symbol = symbol,
-            name = state.cfg.name,
-            color = state.cfg.color,
-            type = state.cfg.type,
+            name = c.name,
+            color = c.color,
+            icon = c.icon,
+            tag = c.tag,
+            type = c.type,
             price = state.price,
             change = change24h(state),
         }
@@ -280,7 +436,7 @@ function Prices.SetSimulated(symbol, price)
     local state = coins[symbol]
     if not state then return false, 'Unknown coin' end
     if state.cfg.type ~= 'simulated' then return false, 'Only simulated coins can be changed' end
-    state.price = round(math.max(state.cfg.minPrice or 0.0001, price), 8)
+    state.price = roundPrice(math.max(state.cfg.minPrice, price))
     state.updated = now()
     pushPoint(state, now(), state.price)
     DB.SaveHistoryPoint(symbol, now(), state.price)

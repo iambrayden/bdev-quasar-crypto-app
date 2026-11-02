@@ -47,6 +47,7 @@ Config.TransactionHistoryLimit = 50
 ---------------------------------------------------------------------
 -- Real coins: prices come from CoinGecko (your FiveM server needs outbound access to api.coingecko.com).
 Config.CoinGecko = {
+    SeedDelaySeconds = 6,          -- delay between history requests on start (free API is rate limited)
     ApiKey = '',                   -- optional free "demo" API key (raises rate limits)
     RefreshSeconds = 90,           -- how often to refresh live prices
     SeedHistoryDays = 7,           -- pull this many days of real history on start for charts
@@ -55,6 +56,7 @@ Config.CoinGecko = {
 -- Simulated coins tick on the server.
 Config.Simulation = {
     TickSeconds = 30,
+    AnnounceEvents = true,         -- notify all players when a meme coin pumps or dumps
 }
 
 -- History kept for charts
@@ -64,23 +66,7 @@ Config.History = {
     MaxChartPoints = 150,          -- points sent to the phone per chart
 }
 
---[[
-    Coins
-    type = 'real'      -> geckoId is required; price = real USD price * multiplier
-    type = 'simulated' -> startPrice, volatility (per tick, 0.01 = ~1%), drift (per tick),
-                          reversion (0-1 pull back toward startPrice), minPrice
-]]
-Config.Coins = {
-    { symbol = 'BTC',  name = 'Bitcoin',   type = 'real', geckoId = 'bitcoin',  multiplier = 1.0, color = '#f7931a' },
-    { symbol = 'ETH',  name = 'Ethereum',  type = 'real', geckoId = 'ethereum', multiplier = 1.0, color = '#627eea' },
-    { symbol = 'SOL',  name = 'Solana',    type = 'real', geckoId = 'solana',   multiplier = 1.0, color = '#14f195' },
-    { symbol = 'DOGE', name = 'Dogecoin',  type = 'real', geckoId = 'dogecoin', multiplier = 1.0, color = '#c2a633' },
-
-    { symbol = 'LSC',  name = 'LosSantosCoin', type = 'simulated', color = '#e84393',
-      startPrice = 125.0, volatility = 0.012, drift = 0.0, reversion = 0.002, minPrice = 0.5 },
-    { symbol = 'MAZE', name = 'MazeToken',     type = 'simulated', color = '#00b894',
-      startPrice = 4.20,  volatility = 0.025, drift = 0.0, reversion = 0.004, minPrice = 0.01 },
-}
+-- Coins and presets live in coins.lua
 
 ---------------------------------------------------------------------
 -- Admin

@@ -10,11 +10,13 @@ version '1.0.0'
 shared_scripts {
     '@ox_lib/init.lua',
     'config.lua',
+    'coins.lua',
 }
 
 client_scripts {
     'client/phone.lua',
     'client/main.lua',
+    'client/admin.lua',
 }
 
 server_scripts {
@@ -32,6 +34,9 @@ files {
     'html/style.css',
     'html/app.js',
     'html/icon.png',
+    'html/coins/*.png',
+    'html/coins/*.jpg',
+    'html/coins/*.webp',
 }
 
 dependencies {

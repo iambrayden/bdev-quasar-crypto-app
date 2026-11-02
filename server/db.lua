@@ -22,7 +22,7 @@ local SCHEMA = {
         `type` VARCHAR(16) NOT NULL,
         `coin` VARCHAR(16) NOT NULL,
         `amount` DECIMAL(30,8) NOT NULL,
-        `price` DECIMAL(24,8) NOT NULL DEFAULT 0,
+        `price` DECIMAL(30,12) NOT NULL DEFAULT 0,
         `usd` DECIMAL(20,2) NOT NULL DEFAULT 0,
         `fee` DECIMAL(30,8) NOT NULL DEFAULT 0,
         `counterparty` VARCHAR(64) DEFAULT NULL,
@@ -33,15 +33,58 @@ local SCHEMA = {
     [[CREATE TABLE IF NOT EXISTS `bdev_crypto_history` (
         `coin` VARCHAR(16) NOT NULL,
         `ts` INT UNSIGNED NOT NULL,
-        `price` DECIMAL(24,8) NOT NULL,
+        `price` DECIMAL(30,12) NOT NULL,
         PRIMARY KEY (`coin`, `ts`)
     )]],
+    [[CREATE TABLE IF NOT EXISTS `bdev_crypto_coins` (
+        `symbol` VARCHAR(16) NOT NULL,
+        `data` LONGTEXT NOT NULL,
+        `created_by` VARCHAR(50) DEFAULT NULL,
+        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`symbol`)
+    )]],
+}
+
+-- Upgrades for tables created by earlier versions (safe to run every start).
+local MIGRATIONS = {
+    'ALTER TABLE `bdev_crypto_history` MODIFY `price` DECIMAL(30,12) NOT NULL',
+    'ALTER TABLE `bdev_crypto_transactions` MODIFY `price` DECIMAL(30,12) NOT NULL DEFAULT 0',
 }
 
 function DB.Init()
     for _, query in ipairs(SCHEMA) do
         MySQL.query.await(query)
     end
+    for _, query in ipairs(MIGRATIONS) do
+        pcall(MySQL.query.await, query)
+    end
+end
+
+---------------------------------------------------------------------
+-- Custom coins (created in-game with /cryptocreate)
+---------------------------------------------------------------------
+function DB.LoadCustomCoins()
+    local out = {}
+    for _, row in ipairs(MySQL.query.await('SELECT data FROM bdev_crypto_coins ORDER BY created_at ASC') or {}) do
+        local ok, data = pcall(json.decode, row.data)
+        if ok and type(data) == 'table' then out[#out + 1] = data end
+    end
+    return out
+end
+
+function DB.SaveCustomCoin(symbol, data, createdBy)
+    MySQL.insert.await('INSERT INTO bdev_crypto_coins (symbol, data, created_by) VALUES (?, ?, ?)',
+        { symbol, json.encode(data), createdBy })
+end
+
+function DB.DeleteCustomCoin(symbol)
+    MySQL.query.await('DELETE FROM bdev_crypto_coins WHERE symbol = ?', { symbol })
+    MySQL.query.await('DELETE FROM bdev_crypto_history WHERE coin = ?', { symbol })
+end
+
+--- Number of characters holding any of this coin.
+function DB.CountHolders(symbol)
+    return MySQL.scalar.await('SELECT COUNT(*) FROM bdev_crypto_holdings WHERE coin = ? AND amount > 0', { symbol }) or 0
 end
 
 ---------------------------------------------------------------------

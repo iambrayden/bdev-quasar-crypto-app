@@ -83,6 +83,103 @@ lib.addCommand('cryptoprices', {
     restricted = Config.AdminGroup,
 }, function(src)
     for _, coin in ipairs(Prices.GetMarket()) do
-        reply(src, ('%s: $%s (%.2f%%)'):format(coin.symbol, tostring(coin.price or 'n/a'), coin.change or 0))
+        local cfg = Prices.GetConfig(coin.symbol)
+        reply(src, ('%s: $%s (%.2f%%) [%s%s]'):format(coin.symbol, tostring(coin.price or 'n/a'), coin.change or 0,
+            cfg.type == 'real' and 'live' or cfg.preset, cfg.custom and ', custom' or ''))
     end
+end)
+
+---------------------------------------------------------------------
+-- Creating / removing coins in-game
+---------------------------------------------------------------------
+local function presetNames()
+    local names = {}
+    for name in pairs(Config.Presets) do names[#names + 1] = name end
+    table.sort(names)
+    return names
+end
+
+--- Creates a coin from a definition, saves it and returns ok, message.
+local function createCoin(src, raw)
+    raw = type(raw) == 'table' and raw or {}
+    local def = {
+        symbol = raw.symbol,
+        name = raw.name,
+        color = raw.color,
+        icon = raw.icon,
+        tag = raw.tag,
+    }
+    if raw.geckoId and raw.geckoId ~= '' then
+        def.geckoId = raw.geckoId
+        def.multiplier = raw.multiplier
+    else
+        def.startPrice = raw.startPrice
+        def.preset = raw.preset
+    end
+
+    local coin, err = Prices.AddCoin(def)
+    if not coin then return false, err end
+
+    def.symbol = coin.symbol
+    DB.SaveCustomCoin(coin.symbol, def, src ~= 0 and Bridge.GetCitizenId(src) or 'console')
+    return true, ('Created %s (%s)%s'):format(coin.name, coin.symbol,
+        coin.type == 'real' and ' with live prices' or (' at $' .. tostring(Prices.Get(coin.symbol))))
+end
+
+lib.addCommand('cryptocreate', {
+    help = 'Create a new coin (no arguments opens a form)',
+    restricted = Config.AdminGroup,
+    params = {
+        { name = 'symbol', type = 'string', help = 'Symbol, e.g. RON', optional = true },
+        { name = 'price', type = 'number', help = 'Start price in $', optional = true },
+        { name = 'preset', type = 'string', help = 'stable / normal / volatile / meme', optional = true },
+        { name = 'name', type = 'longString', help = 'Coin name', optional = true },
+    },
+}, function(src, args)
+    if not args.symbol then
+        if src == 0 then return reply(src, 'Usage: cryptocreate SYMBOL PRICE PRESET NAME') end
+        return TriggerClientEvent('bdev-crypto:createCoinDialog', src, presetNames())
+    end
+    local ok, msg = createCoin(src, {
+        symbol = args.symbol,
+        startPrice = args.price,
+        preset = args.preset and args.preset:lower() or 'normal',
+        name = args.name or args.symbol,
+    })
+    reply(src, msg, ok and 'success' or 'error')
+end)
+
+-- Submitted from the /cryptocreate form.
+lib.callback.register('bdev-crypto:createCoin', function(src, data)
+    if not IsPlayerAceAllowed(src, 'command.cryptocreate') then return { ok = false, error = 'Not allowed' } end
+    local ok, msg = createCoin(src, data)
+    return { ok = ok, message = ok and msg or nil, error = not ok and msg or nil }
+end)
+
+lib.addCommand('cryptoremove', {
+    help = 'Remove a coin created with /cryptocreate',
+    restricted = Config.AdminGroup,
+    params = {
+        { name = 'coin', type = 'string', help = 'Coin symbol' },
+        { name = 'force', type = 'string', help = 'Type "force" to also wipe everyone\'s holdings', optional = true },
+    },
+}, function(src, args)
+    local symbol = tostring(args.coin):upper()
+    local cfg = Prices.GetConfig(symbol)
+    if not cfg then return reply(src, 'Unknown coin: ' .. symbol, 'error') end
+    if not cfg.custom then
+        return reply(src, symbol .. ' is defined in coins.lua. Remove it there and restart.', 'error')
+    end
+
+    local holders = DB.CountHolders(symbol)
+    if holders > 0 and args.force ~= 'force' then
+        return reply(src, ('%d player(s) still hold %s. Use /cryptoremove %s force to wipe their holdings.')
+            :format(holders, symbol, symbol), 'error')
+    end
+    if holders > 0 then
+        MySQL.query.await('DELETE FROM bdev_crypto_holdings WHERE coin = ?', { symbol })
+    end
+    Prices.RemoveCoin(symbol)
+    DB.DeleteCustomCoin(symbol)
+    reply(src, ('Removed %s'):format(symbol), 'success')
 end)

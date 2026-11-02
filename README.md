@@ -4,13 +4,13 @@ A crypto exchange app for the **Quasar smartphone** on **Qbox** servers.
 
 Players can:
 
-- Browse a market of real coins (live prices) and server-only coins (simulated prices), with 1H / 24H / 7D charts.
+- Browse a market of real coins (live prices), meme coins, and server-only coins (simulated prices), with filters and 1H / 24H / 7D charts.
 - Buy and sell coins with their **bank** balance, with a configurable trading fee.
 - See their wallet: holdings, value, profit/loss, and a personal wallet address.
 - Send coins to other players by wallet address or phone number, with an optional network fee.
 - View their transaction history.
 
-Admins can set, pump and crash the server coins, and give coins to players.
+Admins can create new coins in-game, set/pump/crash server coins, and give coins to players.
 
 ## Requirements
 
@@ -50,20 +50,44 @@ Everything is in `config.lua`:
 
 ### Coins
 
-```lua
--- Real coin: price = CoinGecko USD price * multiplier
-{ symbol = 'BTC', name = 'Bitcoin', type = 'real', geckoId = 'bitcoin', multiplier = 1.0, color = '#f7931a' },
+Coins live in **`coins.lua`**, one line each. Only `symbol` and `name` are required.
 
--- Simulated coin: random walk on the server
-{ symbol = 'LSC', name = 'LosSantosCoin', type = 'simulated', color = '#e84393',
-  startPrice = 125.0,  -- starting price and the level it drifts back toward
-  volatility = 0.012,  -- size of each tick's move (~1.2%)
-  drift = 0.0,         -- trend per tick (e.g. 0.0005 for a slow climb)
-  reversion = 0.002,   -- 0 = pure random walk, higher = pulled harder toward startPrice
-  minPrice = 0.5 },
+```lua
+-- Server coin with a preset (stable / normal / volatile / meme)
+{ symbol = 'RON', name = 'RonCoin', startPrice = 0.042, preset = 'meme', icon = 'coins/roncoin.png' },
+
+-- Real coin: live CoinGecko price (geckoId = last part of the coin's coingecko.com URL)
+{ symbol = 'SHIB', name = 'Shiba Inu', geckoId = 'shiba-inu', tag = 'MEME' },
 ```
 
-`geckoId` is the coin's id on coingecko.com (the last part of its page URL). Use `multiplier` to scale real prices to your server's economy, for example `0.01` makes BTC 100x cheaper.
+Optional fields: `color`, `icon` (a file in `html/coins/` or an https URL), `tag` (market badge), `multiplier` (scales real prices for your economy), and any preset value to override (`volatility`, `drift`, `reversion`, `floor`, `events`).
+
+**Presets** (defined in `coins.lua`, so you can edit them or add your own):
+
+| Preset | Behaviour |
+| --- | --- |
+| `stable` | Barely moves, stays near its start price |
+| `normal` | Moderate swings |
+| `volatile` | Big swings plus rare 10-40% pumps/dumps |
+| `meme` | Wild swings, slow bleed, frequent 30-250% pumps and 35-85% rug-pull dumps. Tagged MEME |
+
+When a coin pumps or dumps, every player gets a notification (`Config.Simulation.AnnounceEvents`).
+
+**Included coins:** BTC, ETH, SOL; meme coins DOGE, SHIB, PEPE, WIF, BONK, FLOKI (live); and server coins LSC, MAZE, LSUSD, plus server meme coins CHOP, RAGE, CLUCK, YOLO, GRAPE and RON.
+
+#### Creating coins in-game
+
+`/cryptocreate` opens a form (name, symbol, server/real, start price, preset, CoinGecko id, colour, logo). Or use it in one line:
+
+```
+/cryptocreate RON 0.042 meme RonCoin
+```
+
+Coins created this way are stored in the database, show up for everyone immediately and survive restarts. Remove them with `/cryptoremove RON`. If players hold the coin, you'll be asked to confirm with `/cryptoremove RON force`, which wipes their holdings.
+
+#### Coin logos
+
+Put a square image in `html/coins/` (png, jpg or webp) and set `icon = 'coins/<file>'`. If the image is missing, the coloured circle with the symbol is shown instead.
 
 Simulated prices and their history are saved in the database, so they survive restarts.
 
@@ -82,6 +106,8 @@ Restricted to `Config.AdminGroup` (default `group.admin`).
 | `/cryptopump [coin] [percent]` | Raise a simulated coin by a percentage |
 | `/cryptocrash [coin] [percent]` | Drop a simulated coin by a percentage |
 | `/cryptogive [id] [coin] [amount]` | Give coins to a player |
+| `/cryptocreate` | Create a coin (opens a form; or `/cryptocreate SYMBOL PRICE PRESET NAME`) |
+| `/cryptoremove [coin] [force]` | Remove a coin made with `/cryptocreate` |
 
 Real coins follow the market and can't be changed with these commands.
 
@@ -108,12 +134,15 @@ Open `html/index.html` in a browser. Outside FiveM it runs with built-in mock da
 
 ```
 config.lua          all settings
+coins.lua           coin list and presets
 client/phone.lua    Quasar phone integration (the only phone-specific file)
 client/main.lua     NUI callbacks that relay app requests to the server
+client/admin.lua    /cryptocreate form
 server/bridge.lua   Qbox money/player functions and phone-number lookup
 server/db.lua       database tables and queries
 server/prices.lua   CoinGecko prices, simulated prices, chart history
 server/main.lua     buy / sell / send logic and exports
 server/admin.lua    admin commands
 html/               the app UI shown inside the phone
+html/coins/         coin logo images
 ```

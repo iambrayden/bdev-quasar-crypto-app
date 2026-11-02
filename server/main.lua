@@ -8,9 +8,14 @@ local function round(n, decimals)
     return math.floor(n * m + 0.5) / m
 end
 
--- Floors to 8 decimals; the small epsilon absorbs float error (0.0197 * 1e8 = 1969999.9999...).
+-- Floors a coin amount to 8 decimals (fewer for huge meme-coin amounts, so we stay within
+-- double precision). The small epsilon absorbs float error (0.0197 * 1e8 = 1969999.9999...).
 local function floor8(n)
-    return math.floor(n * 1e8 + 1e-6) / 1e8
+    if n <= 0 then return 0 end
+    local intDigits = math.max(1, math.floor(math.log(n, 10)) + 1)
+    local decimals = math.max(0, math.min(8, 15 - intDigits))
+    local m = 10 ^ decimals
+    return math.floor(n * m + 1e-6) / m
 end
 
 local function rateLimited(src)
@@ -316,6 +321,6 @@ end)
 ---------------------------------------------------------------------
 CreateThread(function()
     DB.Init()
-    Prices.Init()
-    print(('[bdev-crypto] started with %d coins'):format(#Config.Coins))
+    local count = Prices.Init(DB.LoadCustomCoins())
+    print(('[bdev-crypto] started with %d coins'):format(count))
 end)
