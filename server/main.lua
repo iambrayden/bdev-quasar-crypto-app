@@ -232,7 +232,10 @@ lib.callback.register('bdev-crypto:send', function(src, target, symbol, amount)
         -- Make sure the target has a wallet so it shows up correctly.
         if targetCid then DB.GetOrCreateAddress(targetCid) end
     end
-    if not targetCid then return fail('Recipient not found.') end
+    if not targetCid then
+        return fail(target:match('^0[xX]') and 'No wallet with that address.'
+            or 'No online player with that number. Try their wallet address.')
+    end
     if targetCid == citizenid then return fail('You can\'t send coins to yourself.') end
 
     return withLock(citizenid, function()

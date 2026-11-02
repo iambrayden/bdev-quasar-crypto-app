@@ -2,7 +2,7 @@
 
 local function reply(src, msg, kind)
     if src == 0 then return print('[bdev-crypto] ' .. msg) end
-    Bridge.Notify(src, msg, kind)
+    TriggerClientEvent('ox_lib:notify', src, { title = Config.App.label, description = msg, type = kind or 'inform' })
 end
 
 local function simCoinParam(src, symbol)

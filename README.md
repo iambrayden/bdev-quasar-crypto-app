@@ -17,7 +17,7 @@ Admins can create new coins in-game, set/pump/crash server coins, and give coins
 - [qbx_core](https://github.com/Qbox-project/qbx_core)
 - [ox_lib](https://github.com/overextended/ox_lib)
 - [oxmysql](https://github.com/overextended/oxmysql)
-- `qs-smartphone-pro` (preferred) or `qs-smartphone`
+- Quasar **Smartphone V3** (`qs-smartphone`) or **Smartphone PRO** (`qs-smartphone-pro`). The script detects which one you run.
 - For live prices, your FiveM server needs outbound HTTPS to `api.coingecko.com`.
 
 ## Install
@@ -28,11 +28,19 @@ Admins can create new coins in-game, set/pump/crash server coins, and give coins
    ensure ox_lib
    ensure oxmysql
    ensure qbx_core
-   ensure qs-smartphone-pro
+   ensure qs-smartphone
    ensure bdev-quasar-crypto-app
    ```
 3. Start the server. The database tables are created automatically (`install.sql` is included if you'd rather run it yourself).
-4. Players find **Crypto** in the phone's app store.
+4. **Crypto** appears on every phone's home screen. Set `Config.App.appStoreOnly = true` to make players download it from the App Store instead.
+
+### The app doesn't show up?
+
+Type `/cryptoapp` in game and open F8. It re-registers the app and prints which phone was found and, if the phone refused the app, its error code. Common causes:
+
+- The phone's folder was renamed. Put the new name in `Config.Phone`.
+- This resource starts before the phone. It waits up to a minute, but `ensure` it after the phone anyway.
+- You changed `Config.App.name` to an id another app already uses.
 
 ## Configuration
 
@@ -93,7 +101,9 @@ Simulated prices and their history are saved in the database, so they survive re
 
 ### Sending by phone number
 
-`Config.PhoneLookup` decides how a phone number is turned into a citizenid. It tries an export on the phone first, then a direct SQL lookup. **Check the table and column names against your phone's database.** If the lookup fails, players can still send by wallet address.
+Sending by phone number matches online players using the phone's `GetCurrentPhoneNumber` export. To also reach offline players, set `Config.PhoneLookup.Sql` to a table that maps numbers to citizenids. Sending by wallet address always works, online or offline.
+
+Players who receive coins get a phone notification (Smartphone V3), or an on-screen notification otherwise.
 
 ## Admin commands
 

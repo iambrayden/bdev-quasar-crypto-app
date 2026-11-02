@@ -39,7 +39,31 @@ function Bridge.GetSourceByCitizenId(citizenid)
     return player and player.PlayerData.source or nil
 end
 
+local PHONES = { 'qs-smartphone', 'qs-smartphone-pro' }
+
+local function activePhone()
+    if Config.Phone ~= 'auto' then
+        return GetResourceState(Config.Phone) == 'started' and Config.Phone or nil
+    end
+    for _, name in ipairs(PHONES) do
+        if GetResourceState(name) == 'started' then return name end
+    end
+end
+
+--- Phone push notification when possible (Smartphone V3), ox_lib notification otherwise.
 function Bridge.Notify(src, message, kind)
+    local phone = activePhone()
+    if phone then
+        local ok, sent = pcall(function()
+            return exports[phone]:sendPhoneNotification(src, {
+                appId = Config.App.name,
+                title = Config.App.label,
+                text = message,
+                closeTimeout = 5000,
+            })
+        end)
+        if ok and sent ~= false then return end
+    end
     TriggerClientEvent('ox_lib:notify', src, {
         title = Config.App.label,
         description = message,
@@ -47,20 +71,32 @@ function Bridge.Notify(src, message, kind)
     })
 end
 
+local function digits(v)
+    return (tostring(v or ''):gsub('[^%d]', ''))
+end
+
 --- Resolve a phone number to a citizenid. See Config.PhoneLookup.
 function Bridge.GetCitizenIdFromPhone(number)
-    number = tostring(number or ''):gsub('[^%d]', '')
+    number = digits(number)
     if number == '' then return nil end
 
+    -- 1) Online players, using the phone's GetCurrentPhoneNumber(source) export.
     local exp = Config.PhoneLookup.Export
-    if exp and GetResourceState(exp.resource) == 'started' then
-        local ok, result = pcall(function()
-            local res = exports[exp.resource]
-            return res[exp.name](res, number)
-        end)
-        if ok and result then return result end
+    local phone = exp and (exp.resource == 'auto' and activePhone() or exp.resource)
+    if phone and GetResourceState(phone) == 'started' then
+        for _, id in ipairs(GetPlayers()) do
+            local src = tonumber(id)
+            local ok, result = pcall(function()
+                local res = exports[phone]
+                return res[exp.name](res, src)
+            end)
+            if ok and result and digits(result) == number then
+                return Bridge.GetCitizenId(src)
+            end
+        end
     end
 
+    -- 2) Offline players: direct SQL lookup (adjust the table/columns in config.lua).
     local sql = Config.PhoneLookup.Sql
     if sql then
         local ok, result = pcall(MySQL.scalar.await,

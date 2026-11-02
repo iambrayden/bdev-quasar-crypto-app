@@ -5,20 +5,21 @@ Config.Debug = false
 ---------------------------------------------------------------------
 -- Phone integration
 ---------------------------------------------------------------------
--- 'auto' tries qs-smartphone-pro first, then legacy qs-smartphone.
--- Force one with 'qs-smartphone-pro' or 'qs-smartphone'.
+-- 'auto' finds Smartphone V3 ('qs-smartphone') or Smartphone PRO ('qs-smartphone-pro').
+-- If you renamed the phone's folder, put the new resource name here.
 Config.Phone = 'auto'
 
 Config.App = {
     name = 'bdev-crypto',          -- internal app id (must be unique on the phone)
     label = 'Crypto',
     description = 'Buy, sell and send cryptocurrency.',
-    category = 'finance',          -- app store category
+    category = 'Utilities',        -- app store category
     creator = 'bdev',
     age = '18+',
-    job = false,                   -- false = everyone, or a job name string
-    blockedJobs = {},
-    price = 0,                     -- app store price
+    appStoreOnly = false,          -- false = already on every home screen, true = download it from the App Store
+    price = 0,                     -- App Store price (only used when appStoreOnly = true)
+    job = false,                   -- Smartphone PRO only: false = everyone, or a job name
+    blockedJobs = {},              -- Smartphone PRO only
 }
 
 ---------------------------------------------------------------------
@@ -37,7 +38,7 @@ Config.Trading = {
 Config.Transfers = {
     Enabled = true,
     FeePercent = 0.5,              -- % of sent coins burned as a network fee (0 to disable)
-    AllowPhoneNumber = true,       -- allow sending by phone number (see Config.GetCitizenIdFromPhone)
+    AllowPhoneNumber = true,       -- allow sending to online players by phone number (see Config.PhoneLookup)
 }
 
 Config.TransactionHistoryLimit = 50
@@ -75,11 +76,13 @@ Config.AdminGroup = 'group.admin'  -- ACE group allowed to use /crypto* admin co
 
 ---------------------------------------------------------------------
 -- Phone number -> citizenid lookup (server side) for "send to phone number".
--- Adjust this to match your phone's database if needed.
 ---------------------------------------------------------------------
 Config.PhoneLookup = {
-    -- Tried first: an export on the phone resource. Set to false to skip.
-    Export = { resource = 'qs-smartphone-pro', name = 'GetIdentifierByPhone' },
-    -- Fallback: direct SQL. {table} has a {numberColumn} and an {identifierColumn} (citizenid).
-    Sql = { table = 'phone_phones', numberColumn = 'phone_number', identifierColumn = 'id' },
+    -- Online players: the phone's GetCurrentPhoneNumber(source) export. 'auto' = the detected phone.
+    Export = { resource = 'auto', name = 'GetCurrentPhoneNumber' },
+    -- Offline players (optional): direct SQL lookup, e.g.
+    --   Sql = { table = 'your_numbers_table', numberColumn = 'number', identifierColumn = 'citizenid' },
+    -- Off by default: Smartphone V3 ties numbers to the phone/SIM, not the character.
+    -- Wallet addresses always work, online or offline.
+    Sql = false,
 }
