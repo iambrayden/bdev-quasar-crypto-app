@@ -53,7 +53,10 @@ local MIGRATIONS = {
 
 function DB.Init()
     for _, query in ipairs(SCHEMA) do
-        MySQL.query.await(query)
+        local ok, err = pcall(MySQL.query.await, query)
+        if not ok then
+            print(('^1[bdev-crypto] database setup failed: %s^7\n%s'):format(tostring(err), query:match('`(bdev_[%w_]+)`') or ''))
+        end
     end
     for _, query in ipairs(MIGRATIONS) do
         pcall(MySQL.query.await, query)
@@ -65,7 +68,12 @@ end
 ---------------------------------------------------------------------
 function DB.LoadCustomCoins()
     local out = {}
-    for _, row in ipairs(MySQL.query.await('SELECT data FROM bdev_crypto_coins ORDER BY created_at ASC') or {}) do
+    local ok, rows = pcall(MySQL.query.await, 'SELECT data FROM bdev_crypto_coins ORDER BY created_at ASC')
+    if not ok then
+        print('^1[bdev-crypto] could not load custom coins: ' .. tostring(rows) .. '^7')
+        rows = {}
+    end
+    for _, row in ipairs(rows or {}) do
         local ok, data = pcall(json.decode, row.data)
         if ok and type(data) == 'table' then out[#out + 1] = data end
     end
@@ -187,8 +195,9 @@ end
 -- Price history (only simulated coins are persisted; real coins are re-seeded from CoinGecko)
 ---------------------------------------------------------------------
 function DB.LoadHistory(coin, sinceTs)
-    return MySQL.query.await(
-        'SELECT ts, price FROM bdev_crypto_history WHERE coin = ? AND ts >= ? ORDER BY ts ASC', { coin, sinceTs }) or {}
+    local ok, rows = pcall(MySQL.query.await,
+        'SELECT ts, price FROM bdev_crypto_history WHERE coin = ? AND ts >= ? ORDER BY ts ASC', { coin, sinceTs })
+    return ok and rows or {}
 end
 
 function DB.SaveHistoryPoint(coin, ts, price)

@@ -87,9 +87,11 @@ end
 lib.callback.register('bdev-crypto:getData', function(src)
     local citizenid = Bridge.GetCitizenId(src)
     if not citizenid then return fail('No character loaded') end
+    local market = Prices.GetMarket()
     return {
         ok = true,
-        market = Prices.GetMarket(),
+        notice = #market == 0 and (GetStartupNotice() or 'Loading coins…') or nil,
+        market = market,
         wallet = buildWallet(src, citizenid),
         settings = {
             tradeFee = Config.Trading.FeePercent,
@@ -322,8 +324,25 @@ exports('GetCryptoPrice', function(symbol)
 end)
 
 ---------------------------------------------------------------------
+local startupError
+
 CreateThread(function()
     DB.Init()
-    local count = Prices.Init(DB.LoadCustomCoins())
-    print(('[bdev-crypto] started with %d coins'):format(count))
+    local ok, result = pcall(Prices.Init, DB.LoadCustomCoins())
+    if not ok then
+        startupError = tostring(result)
+        return print('^1[bdev-crypto] failed to start the price engine: ' .. startupError .. '^7')
+    end
+    if result == 0 then
+        startupError = 'No coins loaded'
+        return print('^1[bdev-crypto] started with 0 coins. See the errors above.^7')
+    end
+    print(('^2[bdev-crypto] started with %d coins^7'):format(result))
 end)
+
+function GetStartupNotice()
+    if startupError then
+        return 'No coins are loaded (' .. startupError .. '). An admin should check the server console for [bdev-crypto] errors.'
+    end
+    return nil
+end

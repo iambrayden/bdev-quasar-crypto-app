@@ -137,7 +137,7 @@
                     <div class="title">${c.price ? usd(c.price, { price: true }) : '—'}</div>
                     <span class="chip ${cls(c.change)}">${pct(c.change)}</span>
                 </div>
-            </div>`).join('') || '<div class="empty">No coins here.</div>';
+            </div>`).join('') || `<div class="empty">${esc(state.notice || 'No coins here.')}</div>`;
     }
 
     function renderWallet() {
@@ -336,7 +336,8 @@
             if (res && res.error) toast(res.error, false);
             return;
         }
-        state.market = res.market || [];
+        state.market = Array.isArray(res.market) ? res.market : [];
+        state.notice = res.notice || null;
         state.wallet = res.wallet || state.wallet;
         state.settings = res.settings || state.settings;
         renderAll();

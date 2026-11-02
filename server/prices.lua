@@ -115,7 +115,7 @@ function Prices.Normalize(raw)
     if not c.startPrice or c.startPrice <= 0 then return nil, 'Start price must be above 0' end
 
     c.preset = raw.preset or 'normal'
-    local preset = Config.Presets[c.preset]
+    local preset = (Config.Presets or {})[c.preset]
     if not preset then return nil, ('Unknown preset "%s"'):format(tostring(c.preset)) end
 
     local function pick(key, default)
@@ -325,8 +325,18 @@ function Prices.Init(customCoins)
         register(c)
     end
 
-    for _, raw in ipairs(Config.Coins) do load(raw, 'config') end
-    for _, raw in ipairs(customCoins or {}) do raw.custom = true; load(raw, 'custom') end
+    local function safeLoad(raw, origin)
+        local ok, err = pcall(load, raw, origin)
+        if not ok then
+            print(('^1[bdev-crypto] error loading %s coin %s: %s^7'):format(origin, tostring(raw and raw.symbol), tostring(err)))
+        end
+    end
+
+    if type(Config.Coins) ~= 'table' or type(Config.Presets) ~= 'table' then
+        print('^1[bdev-crypto] coins.lua was not loaded. Make sure fxmanifest.lua lists \'coins.lua\' under shared_scripts.^7')
+    end
+    for _, raw in ipairs(Config.Coins or {}) do safeLoad(raw, 'config') end
+    for _, raw in ipairs(customCoins or {}) do raw.custom = true; safeLoad(raw, 'custom') end
 
     CreateThread(function()
         refreshRealPrices()
