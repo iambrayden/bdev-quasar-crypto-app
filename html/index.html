@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <header class="top">
+            <div class="top-label">Portfolio value</div>
+            <div class="top-value" id="portfolio-value">$0.00</div>
+            <div class="top-sub">
+                <span id="portfolio-pl" class="pl">+$0.00 (0.00%)</span>
+                <span class="dot">•</span>
+                <span>Bank <b id="bank-balance">$0</b></span>
+            </div>
+        </header>
+
+        <main>
+            <!-- Market -->
+            <section class="view active" id="view-market">
+                <div class="section-title">Market</div>
+                <div class="list" id="market-list"></div>
+            </section>
+
+            <!-- Wallet -->
+            <section class="view" id="view-wallet">
+                <div class="address-card">
+                    <div>
+                        <div class="muted small">Your wallet address</div>
+                        <div class="address" id="wallet-address">0x…</div>
+                    </div>
+                    <button class="btn ghost small" id="copy-address">Copy</button>
+                </div>
+                <div class="row-actions">
+                    <button class="btn primary" id="open-send">Send crypto</button>
+                </div>
+                <div class="section-title">Holdings</div>
+                <div class="list" id="holdings-list"></div>
+            </section>
+
+            <!-- History -->
+            <section class="view" id="view-history">
+                <div class="section-title">Transactions</div>
+                <div class="list" id="tx-list"></div>
+            </section>
+        </main>
+
+        <nav class="tabs">
+            <button class="tab active" data-view="market">
+                <svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8M14 7h7v7"/></svg>
+                Market
+            </button>
+            <button class="tab" data-view="wallet">
+                <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M16 12.5h2M3 9h18"/></svg>
+                Wallet
+            </button>
+            <button class="tab" data-view="history">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                History
+            </button>
+        </nav>
+
+        <!-- Coin detail -->
+        <div class="page" id="coin-page">
+            <div class="page-head">
+                <button class="icon-btn" id="coin-back" aria-label="Back">
+                    <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+                </button>
+                <div class="coin-head">
+                    <span class="coin-icon" id="coin-icon"></span>
+                    <div>
+                        <div class="coin-name" id="coin-name"></div>
+                        <div class="muted small" id="coin-type"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="coin-price" id="coin-price">$0.00</div>
+            <div class="pl" id="coin-change">0.00%</div>
+            <div class="chart-wrap">
+                <canvas id="chart"></canvas>
+                <div class="chart-tip" id="chart-tip"></div>
+                <div class="chart-empty" id="chart-empty">Collecting price data…</div>
+            </div>
+            <div class="ranges">
+                <button class="range" data-range="1H">1H</button>
+                <button class="range active" data-range="24H">24H</button>
+                <button class="range" data-range="7D">7D</button>
+            </div>
+            <div class="stat-card">
+                <div class="stat"><span class="muted">You own</span><b id="coin-owned">0</b></div>
+                <div class="stat"><span class="muted">Value</span><b id="coin-value">$0.00</b></div>
+                <div class="stat"><span class="muted">Profit / loss</span><b id="coin-pl">$0.00</b></div>
+            </div>
+            <div class="row-actions bottom">
+                <button class="btn buy" id="btn-buy">Buy</button>
+                <button class="btn sell" id="btn-sell">Sell</button>
+            </div>
+        </div>
+
+        <!-- Trade / send sheet -->
+        <div class="backdrop" id="backdrop"></div>
+        <div class="sheet" id="sheet">
+            <div class="sheet-grip"></div>
+            <div class="sheet-title" id="sheet-title"></div>
+
+            <div class="field" id="field-coin">
+                <label>Coin</label>
+                <select id="send-coin"></select>
+            </div>
+            <div class="field" id="field-target">
+                <label id="target-label">Wallet address or phone number</label>
+                <input id="send-target" type="text" autocomplete="off" spellcheck="false" placeholder="0x… or 555-0123">
+            </div>
+            <div class="field">
+                <label id="amount-label">Amount</label>
+                <div class="input-wrap">
+                    <span class="prefix" id="amount-prefix">$</span>
+                    <input id="amount" type="number" inputmode="decimal" min="0" step="any" placeholder="0">
+                    <span class="suffix" id="amount-suffix"></span>
+                </div>
+                <div class="muted small" id="amount-hint"></div>
+            </div>
+            <div class="quick" id="quick">
+                <button data-pct="25">25%</button>
+                <button data-pct="50">50%</button>
+                <button data-pct="75">75%</button>
+                <button data-pct="100">Max</button>
+            </div>
+            <div class="summary" id="summary"></div>
+            <button class="btn primary wide" id="sheet-confirm">Confirm</button>
+        </div>
+
+        <div class="toast" id="toast"></div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
