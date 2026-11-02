@@ -34,7 +34,8 @@
         n = Number(n) || 0;
         const abs = Math.abs(n);
         let digits = 2;
-        if (opts.price && abs > 0 && abs < 1) digits = abs < 0.01 ? 6 : 4;
+        // Prices under $1 keep ~4 significant digits: 0.3821, 0.00001234
+        if (opts.price && abs > 0 && abs < 1) digits = Math.min(12, Math.max(2, 3 - Math.floor(Math.log10(abs))));
         const str = abs.toLocaleString('en-US', { minimumFractionDigits: opts.whole ? 0 : digits, maximumFractionDigits: opts.whole ? 0 : digits });
         return (n < 0 ? '-$' : (opts.sign && n > 0 ? '+$' : '$')) + str;
     }
@@ -50,11 +51,25 @@
     }
 
     const cls = (n) => (Number(n) >= 0 ? 'up' : 'down');
-    const floor8 = (n) => Math.floor(n * 1e8 + 1e-6) / 1e8;
+    // Mirrors the server: 8 decimals, fewer for huge meme-coin amounts.
+    const floor8 = (n) => {
+        if (!(n > 0)) return 0;
+        const intDigits = Math.max(1, Math.floor(Math.log10(n)) + 1);
+        const m = 10 ** Math.max(0, Math.min(8, 15 - intDigits));
+        return Math.floor(n * m + 1e-6) / m;
+    };
 
-    function coinIcon(coin, size) {
-        const style = `background:${esc(coin.color || '#6c5ce7')}` + (size ? `;width:${size}px;height:${size}px` : '');
-        return `<span class="coin-icon" style="${style}">${esc(coin.symbol.slice(0, 4))}</span>`;
+    function coinIcon(coin) {
+        const style = `background:${esc(coin.color || '#6c5ce7')}`;
+        const img = coin.icon ? `<img src="${esc(coin.icon)}" alt="" onerror="this.remove()">` : '';
+        return `<span class="coin-icon" style="${style}">${esc(coin.symbol.slice(0, 4))}${img}</span>`;
+    }
+
+    function badges(c) {
+        let out = '';
+        if (c.tag) out += `<span class="badge tag">${esc(c.tag)}</span>`;
+        else if (c.type === 'simulated') out += '<span class="badge">SERVER</span>';
+        return out;
     }
 
     let toastTimer;
@@ -75,6 +90,7 @@
         settings: { tradeFee: 0, transferFee: 0, transfersEnabled: true, minBuy: 0, maxBuy: 0 },
         view: 'market',
         coin: null,     // symbol open on the detail page
+        filter: 'all',  // market filter chip
         range: '24H',
         chart: [],
         sheet: null,    // 'buy' | 'sell' | 'send'
@@ -99,19 +115,29 @@
         $('bank-balance').textContent = usd(w.balance, { whole: true });
     }
 
+    const FILTERS = {
+        all: () => true,
+        live: (c) => c.type === 'real',
+        server: (c) => c.type === 'simulated',
+        meme: (c) => c.tag === 'MEME',
+        gainers: (c) => c.change > 0,
+    };
+
     function renderMarket() {
-        $('market-list').innerHTML = state.market.map((c) => `
+        const list = state.market.filter(FILTERS[state.filter] || FILTERS.all);
+        if (state.filter === 'gainers') list.sort((a, b) => b.change - a.change);
+        $('market-list').innerHTML = list.map((c) => `
             <div class="item" data-coin="${esc(c.symbol)}">
                 ${coinIcon(c)}
                 <div class="main">
-                    <div class="title">${esc(c.name)}${c.type === 'simulated' ? '<span class="badge">SERVER</span>' : ''}</div>
+                    <div class="title">${esc(c.name)}${badges(c)}</div>
                     <div class="sub">${esc(c.symbol)}</div>
                 </div>
                 <div class="right">
                     <div class="title">${c.price ? usd(c.price, { price: true }) : '—'}</div>
                     <span class="chip ${cls(c.change)}">${pct(c.change)}</span>
                 </div>
-            </div>`).join('') || '<div class="empty">No coins configured.</div>';
+            </div>`).join('') || '<div class="empty">No coins here.</div>';
     }
 
     function renderWallet() {
@@ -167,7 +193,7 @@
         const h = holdingOf(c.symbol);
         $('coin-icon').outerHTML = coinIcon(c).replace('class="coin-icon"', 'class="coin-icon" id="coin-icon"');
         $('coin-name').textContent = `${c.name} (${c.symbol})`;
-        $('coin-type').textContent = c.type === 'simulated' ? 'Server coin' : 'Live market price';
+        $('coin-type').textContent = (c.tag === 'MEME' ? 'Meme coin · ' : '') + (c.type === 'simulated' ? 'Server coin' : 'Live market price');
         $('coin-price').textContent = c.price ? usd(c.price, { price: true }) : '—';
 
         const owned = h ? h.amount : 0;
@@ -347,6 +373,13 @@
     }
 
     document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => showView(t.dataset.view)));
+    $('filters').addEventListener('click', (e) => {
+        const chip = e.target.closest('[data-filter]');
+        if (!chip) return;
+        state.filter = chip.dataset.filter;
+        document.querySelectorAll('#filters [data-filter]').forEach((x) => x.classList.toggle('active', x === chip));
+        renderMarket();
+    });
     $('market-list').addEventListener('click', (e) => { const el = e.target.closest('[data-coin]'); if (el) openCoin(el.dataset.coin); });
     $('holdings-list').addEventListener('click', (e) => { const el = e.target.closest('[data-coin]'); if (el) openCoin(el.dataset.coin); });
     $('coin-back').addEventListener('click', closeCoin);
@@ -527,9 +560,13 @@
             { symbol: 'BTC', name: 'Bitcoin', color: '#f7931a', type: 'real', price: 96250.12, change: 2.31 },
             { symbol: 'ETH', name: 'Ethereum', color: '#627eea', type: 'real', price: 3412.55, change: -1.12 },
             { symbol: 'SOL', name: 'Solana', color: '#14f195', type: 'real', price: 182.4, change: 4.87 },
-            { symbol: 'DOGE', name: 'Dogecoin', color: '#c2a633', type: 'real', price: 0.3821, change: -3.4 },
+            { symbol: 'DOGE', name: 'Dogecoin', color: '#c2a633', type: 'real', tag: 'MEME', price: 0.3821, change: -3.4 },
+            { symbol: 'SHIB', name: 'Shiba Inu', color: '#ffa409', type: 'real', tag: 'MEME', price: 0.00002187, change: 6.1 },
+            { symbol: 'PEPE', name: 'Pepe', color: '#3d9b3b', type: 'real', tag: 'MEME', price: 0.00001934, change: -7.25 },
             { symbol: 'LSC', name: 'LosSantosCoin', color: '#e84393', type: 'simulated', price: 131.77, change: 5.42 },
             { symbol: 'MAZE', name: 'MazeToken', color: '#00b894', type: 'simulated', price: 4.0312, change: -0.85 },
+            { symbol: 'CHOP', name: 'ChopCoin', color: '#a0522d', type: 'simulated', tag: 'MEME', price: 0.006113, change: 45.5 },
+            { symbol: 'RON', name: 'RonCoin', color: '#7ac143', type: 'simulated', tag: 'MEME', icon: 'coins/roncoin.png', price: 0.04871, change: 15.97 },
         ],
         handle(name, d) {
             const coin = (s) => this.coins.find((c) => c.symbol === s);

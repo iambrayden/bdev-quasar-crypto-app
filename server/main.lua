@@ -8,9 +8,14 @@ local function round(n, decimals)
     return math.floor(n * m + 0.5) / m
 end
 
--- Floors to 8 decimals; the small epsilon absorbs float error (0.0197 * 1e8 = 1969999.9999...).
+-- Floors a coin amount to 8 decimals (fewer for huge meme-coin amounts, so we stay within
+-- double precision). The small epsilon absorbs float error (0.0197 * 1e8 = 1969999.9999...).
 local function floor8(n)
-    return math.floor(n * 1e8 + 1e-6) / 1e8
+    if n <= 0 then return 0 end
+    local intDigits = math.max(1, math.floor(math.log(n, 10)) + 1)
+    local decimals = math.max(0, math.min(8, 15 - intDigits))
+    local m = 10 ^ decimals
+    return math.floor(n * m + 1e-6) / m
 end
 
 local function rateLimited(src)
@@ -227,7 +232,10 @@ lib.callback.register('bdev-crypto:send', function(src, target, symbol, amount)
         -- Make sure the target has a wallet so it shows up correctly.
         if targetCid then DB.GetOrCreateAddress(targetCid) end
     end
-    if not targetCid then return fail('Recipient not found.') end
+    if not targetCid then
+        return fail(target:match('^0[xX]') and 'No wallet with that address.'
+            or 'No online player with that number. Try their wallet address.')
+    end
     if targetCid == citizenid then return fail('You can\'t send coins to yourself.') end
 
     return withLock(citizenid, function()
@@ -316,6 +324,6 @@ end)
 ---------------------------------------------------------------------
 CreateThread(function()
     DB.Init()
-    Prices.Init()
-    print(('[bdev-crypto] started with %d coins'):format(#Config.Coins))
+    local count = Prices.Init(DB.LoadCustomCoins())
+    print(('[bdev-crypto] started with %d coins'):format(count))
 end)
