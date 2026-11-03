@@ -32,7 +32,7 @@ Admins can create new coins in-game, set/pump/crash server coins, and give coins
    ensure bdev-quasar-crypto-app
    ```
 3. Start the server. The database tables are created automatically (`install.sql` is included if you'd rather run it yourself).
-4. **Crypto** appears on every phone's home screen. Set `Config.App.appStoreOnly = true` to make players download it from the App Store instead.
+4. Players download **Crypto** from the App Store. Set `Config.App.appStoreOnly = false` to put it on every phone's home screen instead.
 
 ### The app doesn't show up?
 
